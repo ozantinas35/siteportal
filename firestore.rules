@@ -1,0 +1,171 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    function isAdminOfSite(siteId) {
+      let userData = getUserData();
+      return userData.role == 'admin' && userData.siteId == siteId;
+    }
+
+    function isResidentOfSite(siteId) {
+      let userData = getUserData();
+      return userData.role == 'resident' && userData.siteId == siteId;
+    }
+
+    function isMemberOfSite(siteId) {
+      return isAdminOfSite(siteId) || isResidentOfSite(siteId);
+    }
+
+    function isValidString(val, minLen, maxLen) {
+      return val is string && val.size() >= minLen && val.size() <= maxLen;
+    }
+
+    function isValidOptionalString(val, minLen, maxLen) {
+      return val == null || (val is string && val.size() >= minLen && val.size() <= maxLen);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+    function isValidUser(data, userId) {
+      return data.keys().hasAll(['uid', 'role', 'email', 'siteId']) &&
+             data.uid == userId &&
+             (data.role == 'admin' || data.role == 'resident') &&
+             isValidString(data.email, 3, 100) &&
+             isValidString(data.siteId, 1, 100) &&
+             isValidOptionalString(data.get('name', null), 0, 100) &&
+             isValidOptionalString(data.get('firstName', null), 0, 100) &&
+             isValidOptionalString(data.get('lastName', null), 0, 100) &&
+             isValidOptionalString(data.get('flatNumber', null), 0, 20) &&
+             isValidOptionalString(data.get('phone', null), 0, 20);
+    }
+
+    function isValidSite(data) {
+      return data.keys().hasAll(['name', 'inviteCode', 'adminId']) &&
+             isValidString(data.name, 1, 100) &&
+             isValidString(data.inviteCode, 1, 20) &&
+             data.adminId == request.auth.uid;
+    }
+
+    function isValidDue(data) {
+      return data.keys().hasAll(['siteId', 'residentId', 'amount', 'month', 'year', 'status']) &&
+             isValidString(data.siteId, 1, 100) &&
+             isValidString(data.residentId, 1, 100) &&
+             data.amount is number && data.amount >= 0 &&
+             isValidString(data.month, 1, 20) &&
+             data.year is number && data.year >= 2000 &&
+             (data.status == 'paid' || data.status == 'unpaid' || data.status == 'pending');
+    }
+
+    function isValidTicket(data) {
+      return data.keys().hasAll(['siteId', 'residentId', 'subject', 'description', 'status', 'date']) &&
+             isValidString(data.siteId, 1, 100) &&
+             isValidString(data.residentId, 1, 100) &&
+             isValidString(data.subject, 1, 500) &&
+             isValidString(data.description, 1, 5000) &&
+             (data.status == 'pending' || data.status == 'in_progress' || data.status == 'resolved') &&
+             isValidString(data.date, 1, 50) &&
+             (!('createdAt' in data) || isValidString(data.createdAt, 1, 50)) &&
+             (!('attachment' in data) || (data.attachment is map && isValidString(data.attachment.name, 1, 500) && isValidString(data.attachment.url, 1, 5000000)));
+    }
+
+    function isValidAnnouncement(data) {
+      return data.keys().hasAll(['siteId', 'title', 'content', 'date']) &&
+             isValidString(data.siteId, 1, 100) &&
+             isValidString(data.title, 1, 200) &&
+             isValidString(data.content, 1, 5000) &&
+             isValidString(data.date, 1, 50);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      // Users can read their own profile. Admins can read profiles in their site.
+      allow read: if isOwner(userId) || (isAuthenticated() && isAdminOfSite(resource.data.siteId));
+      
+      // Anyone authenticated can create their profile.
+      allow create: if isOwner(userId) && isValidUser(request.resource.data, userId);
+      
+      // Users can update their own profile, but cannot change their role, uid, or siteId.
+      // Admins can update users in their site.
+      allow update: if (isOwner(userId) || (isAuthenticated() && isAdminOfSite(resource.data.siteId))) && 
+                    isValidUser(request.resource.data, userId) &&
+                    request.resource.data.role == resource.data.role &&
+                    request.resource.data.uid == resource.data.uid &&
+                    request.resource.data.siteId == resource.data.siteId;
+                    
+      // Admins can delete users in their site
+      allow delete: if isAuthenticated() && isAdminOfSite(resource.data.siteId);
+    }
+
+    match /sites/{siteId} {
+      // Any authenticated user can read sites (needed for invite code verification during registration).
+      allow read: if isAuthenticated();
+      
+      // Any authenticated user can create a site (they become the admin).
+      allow create: if isAuthenticated() && isValidSite(request.resource.data);
+      
+      // Only the admin of the site can update it.
+      allow update: if isAuthenticated() && resource.data.adminId == request.auth.uid && isValidSite(request.resource.data) && request.resource.data.adminId == resource.data.adminId;
+    }
+
+    match /dues/{dueId} {
+      // Admins can read all dues in their site. Residents can read their own dues.
+      allow read: if isAuthenticated() && (isAdminOfSite(resource.data.siteId) || resource.data.residentId == request.auth.uid);
+      
+      // Only admins can create/update/delete dues for their site.
+      // Residents can update status to 'pending' (payment requested) if it's their due.
+      allow create: if isAuthenticated() && isAdminOfSite(request.resource.data.siteId) && isValidDue(request.resource.data);
+      allow update: if isAuthenticated() && isValidDue(request.resource.data) && request.resource.data.siteId == resource.data.siteId &&
+                    (
+                      isAdminOfSite(resource.data.siteId) || 
+                      (resource.data.residentId == request.auth.uid && request.resource.data.status == 'pending')
+                    );
+      allow delete: if isAuthenticated() && isAdminOfSite(resource.data.siteId);
+    }
+
+    match /tickets/{ticketId} {
+      // Admins can read all tickets in their site. Residents can read their own tickets.
+      allow read: if isAuthenticated() && (isAdminOfSite(resource.data.siteId) || resource.data.residentId == request.auth.uid);
+      
+      // Residents can create tickets for their site.
+      allow create: if isAuthenticated() && request.resource.data.residentId == request.auth.uid && isValidTicket(request.resource.data);
+      
+      // Admins can update ticket status. Residents can update their own tickets.
+      allow update: if isAuthenticated() && isValidTicket(request.resource.data) && request.resource.data.siteId == resource.data.siteId &&
+                    (
+                      isAdminOfSite(resource.data.siteId) || 
+                      (resource.data.residentId == request.auth.uid && request.resource.data.residentId == resource.data.residentId)
+                    );
+      allow delete: if isAuthenticated() && (isAdminOfSite(resource.data.siteId) || resource.data.residentId == request.auth.uid);
+    }
+
+    match /announcements/{announcementId} {
+      // All members of a site can read its announcements.
+      allow read: if isAuthenticated() && isMemberOfSite(resource.data.siteId);
+      
+      // Only admins can create/update/delete announcements for their site.
+      allow create: if isAuthenticated() && isAdminOfSite(request.resource.data.siteId) && isValidAnnouncement(request.resource.data);
+      allow update: if isAuthenticated() && isAdminOfSite(resource.data.siteId) && isValidAnnouncement(request.resource.data) && request.resource.data.siteId == resource.data.siteId;
+      allow delete: if isAuthenticated() && isAdminOfSite(resource.data.siteId);
+    }
+  }
+}

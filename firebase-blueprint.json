@@ -1,0 +1,101 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile information for both admins and residents.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "role": { "type": "string", "enum": ["admin", "resident"], "description": "User role" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string", "description": "Admin's full name" },
+        "firstName": { "type": "string", "description": "Resident's first name" },
+        "lastName": { "type": "string", "description": "Resident's last name" },
+        "phone": { "type": "string", "description": "Resident's phone number" },
+        "flatNumber": { "type": "string", "description": "Resident's flat number" },
+        "siteId": { "type": "string", "description": "ID of the site the user belongs to" }
+      },
+      "required": ["uid", "role", "email", "siteId"]
+    },
+    "Site": {
+      "title": "Site",
+      "description": "Information about the apartment complex/site.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "inviteCode": { "type": "string" },
+        "adminId": { "type": "string", "description": "UID of the admin who created the site" }
+      },
+      "required": ["name", "inviteCode", "adminId"]
+    },
+    "Due": {
+      "title": "Due",
+      "description": "Monthly dues for residents.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "residentId": { "type": "string" },
+        "amount": { "type": "number" },
+        "month": { "type": "string" },
+        "year": { "type": "number" },
+        "status": { "type": "string", "enum": ["paid", "unpaid", "pending"] }
+      },
+      "required": ["siteId", "residentId", "amount", "month", "year", "status"]
+    },
+    "Ticket": {
+      "title": "Ticket",
+      "description": "Support tickets or maintenance requests.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "residentId": { "type": "string" },
+        "subject": { "type": "string" },
+        "description": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "in_progress", "resolved"] },
+        "date": { "type": "string" },
+        "attachment": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string" },
+            "url": { "type": "string" }
+          }
+        }
+      },
+      "required": ["siteId", "residentId", "subject", "description", "status", "date"]
+    },
+    "Announcement": {
+      "title": "Announcement",
+      "description": "Announcements made by the admin.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "title": { "type": "string" },
+        "content": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["siteId", "title", "content", "date"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stores user profiles."
+    },
+    "/sites/{siteId}": {
+      "schema": { "$ref": "#/entities/Site" },
+      "description": "Stores site information."
+    },
+    "/dues/{dueId}": {
+      "schema": { "$ref": "#/entities/Due" },
+      "description": "Stores dues records."
+    },
+    "/tickets/{ticketId}": {
+      "schema": { "$ref": "#/entities/Ticket" },
+      "description": "Stores support tickets."
+    },
+    "/announcements/{announcementId}": {
+      "schema": { "$ref": "#/entities/Announcement" },
+      "description": "Stores announcements."
+    }
+  }
+}
