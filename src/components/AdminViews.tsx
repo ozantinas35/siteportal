@@ -294,7 +294,7 @@ export function AdminDuesView({ dues, residents, siteInfo }: any) {
               </tr>
             </thead>
             <tbody>
-              {dues.map((due: any) => {
+              {dues.filter((due: any) => residents.some((r: any) => r.id === due.residentId)).map((due: any) => {
                 const resident = residents.find((r: any) => r.id === due.residentId);
                 return (
                   <tr key={due.id} className="border-b border-slate-100 hover:bg-slate-50">
@@ -369,7 +369,7 @@ export function AdminTicketsView({ tickets, residents }: any) {
             </tr>
           </thead>
           <tbody>
-            {filteredTickets.map((ticket: any) => {
+            {filteredTickets.filter((ticket: any) => residents.some((r: any) => r.id === ticket.residentId)).map((ticket: any) => {
               const resident = residents.find((r: any) => r.id === ticket.residentId);
               return (
                 <tr key={ticket.id} className="border-b border-slate-100 hover:bg-slate-50">
