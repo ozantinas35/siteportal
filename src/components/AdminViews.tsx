@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
-import { Plus, CheckCircle, Clock, AlertCircle, Trash2, Check, Bell, Paperclip } from 'lucide-react';
+import { Plus, CheckCircle, Clock, AlertCircle, Trash2, Check, Bell, Paperclip, Download } from 'lucide-react';
 import { collection, addDoc, updateDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db, auth } from '../firebase';
 import { handleFirestoreError, OperationType } from '../lib/firebase-utils';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 function StatCard({ title, amount, icon, trend, trendUp, isNumber = false }: any) {
   return (
@@ -94,11 +96,19 @@ export function AdminDashboardView({ dues, tickets, announcements, residents, si
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
           <h2 className="text-lg font-semibold text-slate-800 mb-6">Son Talepler & Arızalar</h2>
           <div className="space-y-4">
-            {tickets.slice(0, 3).map((ticket: any) => {
-              const resident = residents.find((r: any) => r.id === ticket.residentId);
-              return <TicketItem key={ticket.id} title={ticket.subject} location={resident?.flatNumber || 'Bilinmiyor'} status={ticket.status} time={ticket.date} />;
-            })}
-            {tickets.length === 0 && <p className="text-slate-500 text-sm">Bekleyen talep yok.</p>}
+            {tickets
+              .filter((ticket: any) => residents.some((r: any) => r.id === ticket.residentId))
+              .sort((a: any, b: any) => {
+                const dateA = a.createdAt || a.date;
+                const dateB = b.createdAt || b.date;
+                return new Date(dateB).getTime() - new Date(dateA).getTime();
+              })
+              .slice(0, 3)
+              .map((ticket: any) => {
+                const resident = residents.find((r: any) => r.id === ticket.residentId);
+                return <TicketItem key={ticket.id} title={ticket.subject} location={resident?.flatNumber || 'Bilinmiyor'} status={ticket.status} time={ticket.date} />;
+              })}
+            {tickets.filter((ticket: any) => residents.some((r: any) => r.id === ticket.residentId)).length === 0 && <p className="text-slate-500 text-sm">Bekleyen talep yok.</p>}
           </div>
         </div>
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
@@ -263,14 +273,54 @@ export function AdminDuesView({ dues, residents, siteInfo }: any) {
     return <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-rose-100 text-rose-700">Ödenmedi</span>;
   };
 
+  const handleExportPDF = () => {
+    const doc = new jsPDF();
+    
+    doc.setFont("helvetica", "bold");
+    doc.text("Aidat ve Borc Listesi", 14, 20);
+    
+    doc.setFontSize(10);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Olusturulma Tarihi: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+    const validDues = dues.filter((due: any) => residents.some((r: any) => r.id === due.residentId));
+
+    const tableData = validDues.map((due: any) => {
+      const resident = residents.find((r: any) => r.id === due.residentId);
+      const statusText = due.status === 'paid' ? 'Odendi' : (due.status === 'pending' ? 'Onay Bekliyor' : 'Odenmedi');
+      return [
+        `${resident?.firstName} ${resident?.lastName} (${resident?.flatNumber})`,
+        `${due.month} ${due.year}`,
+        `${due.amount.toLocaleString('tr-TR')} TL`,
+        statusText
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 40,
+      head: [['Sakin', 'Donem', 'Tutar', 'Durum']],
+      body: tableData,
+      theme: 'grid',
+      styles: { fontSize: 9, font: "helvetica" },
+      headStyles: { fillColor: [79, 70, 229] }
+    });
+
+    doc.save('aidat_listesi.pdf');
+  };
+
   return (
     <div className="space-y-6">
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="p-6 border-b border-slate-200 flex justify-between items-center">
           <h2 className="text-lg font-semibold text-slate-800">Aidat ve Borç Listesi</h2>
-          <button onClick={() => setIsAddingBulk(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors">
-            <Plus size={18} /> Toplu Aidat Yansıt
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={handleExportPDF} className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2 rounded-lg font-medium transition-colors">
+              <Download size={18} /> PDF İndir
+            </button>
+            <button onClick={() => setIsAddingBulk(true)} className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg font-medium hover:bg-indigo-700 transition-colors">
+              <Plus size={18} /> Toplu Aidat Yansıt
+            </button>
+          </div>
         </div>
         {isAddingBulk && (
           <div className="p-6 bg-slate-50 border-b border-slate-200">

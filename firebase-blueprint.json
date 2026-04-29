@@ -13,7 +13,8 @@
         "lastName": { "type": "string", "description": "Resident's last name" },
         "phone": { "type": "string", "description": "Resident's phone number" },
         "flatNumber": { "type": "string", "description": "Resident's flat number" },
-        "siteId": { "type": "string", "description": "ID of the site the user belongs to" }
+        "siteId": { "type": "string", "description": "ID of the site the user belongs to" },
+        "photoURL": { "type": "string", "description": "Base64 encoded profile picture" }
       },
       "required": ["uid", "role", "email", "siteId"]
     },
@@ -23,6 +24,8 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "address": { "type": "string" },
+        "iban": { "type": "string" },
         "inviteCode": { "type": "string" },
         "adminId": { "type": "string", "description": "UID of the admin who created the site" }
       },
@@ -74,6 +77,72 @@
         "date": { "type": "string" }
       },
       "required": ["siteId", "title", "content", "date"]
+    },
+    "Expense": {
+      "title": "Expense",
+      "description": "Income and expense tracking for the site.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "title": { "type": "string" },
+        "amount": { "type": "number" },
+        "date": { "type": "string" },
+        "type": { "type": "string", "enum": ["income", "expense"] }
+      },
+      "required": ["siteId", "title", "amount", "date", "type"]
+    },
+    "Poll": {
+      "title": "Poll",
+      "description": "Polls created by admins for residents.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "question": { "type": "string" },
+        "options": { "type": "array", "items": { "type": "string" } },
+        "status": { "type": "string", "enum": ["active", "closed"] },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["siteId", "question", "options", "status", "createdAt"]
+    },
+    "Vote": {
+      "title": "Vote",
+      "description": "Resident votes on polls.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "pollId": { "type": "string" },
+        "residentId": { "type": "string" },
+        "optionIndex": { "type": "number" }
+      },
+      "required": ["siteId", "pollId", "residentId", "optionIndex"]
+    },
+    "Visitor": {
+      "title": "Visitor",
+      "description": "Visitor and package tracking.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "residentId": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["visitor", "package"] },
+        "status": { "type": "string", "enum": ["expected", "arrived", "delivered"] },
+        "date": { "type": "string" }
+      },
+      "required": ["siteId", "residentId", "name", "type", "date", "status"]
+    },
+    "Reservation": {
+      "title": "Reservation",
+      "description": "Facility reservations.",
+      "type": "object",
+      "properties": {
+        "siteId": { "type": "string" },
+        "residentId": { "type": "string" },
+        "facility": { "type": "string" },
+        "date": { "type": "string" },
+        "time": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] }
+      },
+      "required": ["siteId", "residentId", "facility", "date", "time", "status"]
     }
   },
   "firestore": {
@@ -96,6 +165,26 @@
     "/announcements/{announcementId}": {
       "schema": { "$ref": "#/entities/Announcement" },
       "description": "Stores announcements."
+    },
+    "/expenses/{expenseId}": {
+      "schema": { "$ref": "#/entities/Expense" },
+      "description": "Stores expenses and incomes."
+    },
+    "/polls/{pollId}": {
+      "schema": { "$ref": "#/entities/Poll" },
+      "description": "Stores polls."
+    },
+    "/votes/{voteId}": {
+      "schema": { "$ref": "#/entities/Vote" },
+      "description": "Stores votes."
+    },
+    "/visitors/{visitorId}": {
+      "schema": { "$ref": "#/entities/Visitor" },
+      "description": "Stores visitor logs."
+    },
+    "/reservations/{reservationId}": {
+      "schema": { "$ref": "#/entities/Reservation" },
+      "description": "Stores reservations."
     }
   }
 }
